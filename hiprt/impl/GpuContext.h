@@ -83,14 +83,14 @@ class GpuContext : public ContextBase
 		oroStream								 stream,
 		std::vector<hiprtDevicePtr>&			 buffers ) override;
 
-	size_t
-	getScenesBuildTempBufferSize( const std::vector<hiprtSceneBuildInput>& buildInputs, const hiprtBuildOptions buildOptions );
+	size_t getScenesBuildTempBufferSize(
+		const std::vector<hiprtSceneBuildInput>& buildInputs, const hiprtBuildOptions buildOptions ) override;
 
 	std::vector<hiprtScene> compactScenes( const std::vector<hiprtScene>& scenes, oroStream stream ) override;
 
-	hiprtFuncTable createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes );
-	void		   setFuncTable( hiprtFuncTable funcTable, uint32_t geomType, uint32_t rayType, hiprtFuncDataSet set );
-	void		   destroyFuncTable( hiprtFuncTable funcTable );
+	hiprtFuncTable createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes ) override;
+	void		   setFuncTable( hiprtFuncTable funcTable, uint32_t geomType, uint32_t rayType, hiprtFuncDataSet set ) override;
+	void		   destroyFuncTable( hiprtFuncTable funcTable ) override;
 
 	void createGlobalStackBuffer( const hiprtGlobalStackBufferInput& input, hiprtGlobalStackBuffer& stackBufferOut ) override;
 	void destroyGlobalStackBuffer( hiprtGlobalStackBuffer stackBuffer ) override;
@@ -128,7 +128,7 @@ class GpuContext : public ContextBase
 		std::vector<oroFunction>&			 functions,
 		bool								 cache ) override;
 
-	void setCacheDir( const std::filesystem::path& path );
+	void setCacheDir( const std::filesystem::path& path ) override;
 
 	void setLogLevel( hiprtLogLevel level ) override { m_logger.setLevel( level ); }
 

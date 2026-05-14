@@ -88,6 +88,12 @@ class ContextBase
 	virtual void createGlobalStackBuffer( const hiprtGlobalStackBufferInput& input, hiprtGlobalStackBuffer& stackBufferOut ) = 0;
 	virtual void destroyGlobalStackBuffer( hiprtGlobalStackBuffer stackBuffer )									= 0;
 
+	virtual hiprtFuncTable createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes )										   = 0;
+	virtual void		   setFuncTable( hiprtFuncTable funcTable, uint32_t geomType, uint32_t rayType, hiprtFuncDataSet set ) = 0;
+	virtual void		   destroyFuncTable( hiprtFuncTable funcTable )														   = 0;
+
+	virtual void setCacheDir( const std::filesystem::path& path ) = 0;
+
 	virtual void setLogLevel( hiprtLogLevel level ) = 0;
 
 	virtual struct CpuGeometryData* getCpuGeom( hiprtGeometry ) = 0;

@@ -1,5 +1,6 @@
 #include "CpuContext.h"
 
+#include <iostream>
 #include <stdexcept>
 
 namespace hiprt
@@ -8,9 +9,16 @@ namespace
 {
 [[noreturn]] void throwNotImplemented( const char* what )
 {
+	std::cerr << "[CpuContext] not implemented: " << what << std::endl;
 	throw std::runtime_error( what );
 }
 } // namespace
+
+CpuContext::CpuContext( const hiprtContextCreationInput& input )
+{
+	std::cerr << "[CpuContext] constructed (numCpuThreads=" << input.numCpuThreads << ")" << std::endl;
+	// TODO: Initialize Embree RTCDevice here, honoring input.numCpuThreads.
+}
 
 std::vector<hiprtGeometry> CpuContext::createGeometries(
 	const std::vector<hiprtGeometryBuildInput>&, const hiprtBuildOptions )

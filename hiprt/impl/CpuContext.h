@@ -13,7 +13,10 @@ namespace hiprt{
 class CpuContext : public ContextBase
 {
   public:
-		std::vector<hiprtGeometry>
+	CpuContext( const hiprtContextCreationInput& input );
+	~CpuContext() override = default;
+
+	std::vector<hiprtGeometry>
 	createGeometries( const std::vector<hiprtGeometryBuildInput>& buildInputs, const hiprtBuildOptions buildOptions ) override;
 
 	void destroyGeometries( const std::vector<hiprtGeometry>& geometries ) override;
@@ -61,9 +64,11 @@ class CpuContext : public ContextBase
 
 	std::vector<hiprtScene> compactScenes( const std::vector<hiprtScene>& scenes, oroStream stream ) override;
 
-	hiprtFuncTable createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes );
-	void		   setFuncTable( hiprtFuncTable funcTable, uint32_t geomType, uint32_t rayType, hiprtFuncDataSet set );
-	void		   destroyFuncTable( hiprtFuncTable funcTable );
+	hiprtFuncTable createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes ) override;
+	void		   setFuncTable( hiprtFuncTable funcTable, uint32_t geomType, uint32_t rayType, hiprtFuncDataSet set ) override;
+	void		   destroyFuncTable( hiprtFuncTable funcTable ) override;
+
+	void setCacheDir( const std::filesystem::path& path ) override { (void)path; }
 
 	void setLogLevel( hiprtLogLevel level ) override { (void)level; }
 

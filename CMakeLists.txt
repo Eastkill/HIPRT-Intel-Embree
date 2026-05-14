@@ -720,3 +720,23 @@ if(HIPRTEW)
 
 	target_compile_definitions(hiprtewtest PRIVATE GTEST_HAS_TR1_TUPLE=0)
 endif()
+
+
+# Project: CPU dispatch smoke test
+# Tiny standalone program that proves hiprtCreateContext(deviceType=hiprtDeviceCPU)
+# routes through CpuContext (not GpuContext). It does not need a GPU.
+add_executable(cpu_smoke ${CMAKE_CURRENT_SOURCE_DIR}/test/cpu_smoke.cpp)
+
+target_include_directories(cpu_smoke PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/contrib/Orochi)
+
+target_link_libraries(cpu_smoke PRIVATE ${HIPRT_NAME})
+
+if(WIN32)
+	target_link_libraries(cpu_smoke PRIVATE version)
+endif()
+
+if( CMAKE_BUILD_TYPE STREQUAL "Debug" )
+	set_target_properties(cpu_smoke PROPERTIES OUTPUT_NAME "cpu_smokeD")
+endif()
