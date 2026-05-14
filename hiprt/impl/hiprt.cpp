@@ -25,7 +25,7 @@
 #include <hiprt/hiprt.h>
 #include <hiprt/hiprt_libpath.h>
 #include <hiprt/impl/Error.h>
-#include <hiprt/impl/Context.h>
+#include <hiprt/impl/GpuContext.h>
 #include <hiprt/impl/Header.h>
 #include <hiprt/impl/Utility.h>
 
@@ -38,7 +38,7 @@ hiprtError hiprtCreateContext( uint32_t hiprtApiVersion, const hiprtContextCreat
 
 	try
 	{
-		Context* ctxt = new Context( input );
+		GpuContext* ctxt = new GpuContext( input );
 		contextOut	  = reinterpret_cast<hiprtContext>( ctxt );
 	}
 	catch ( std::exception& e )
@@ -53,7 +53,7 @@ hiprtError hiprtCreateContext( uint32_t hiprtApiVersion, const hiprtContextCreat
 hiprtError hiprtDestroyContext( hiprtContext context )
 {
 	if ( !context ) return hiprtErrorInvalidParameter;
-	delete reinterpret_cast<Context*>( context );
+	delete reinterpret_cast<GpuContext*>( context );
 	return hiprtSuccess;
 }
 
@@ -88,13 +88,13 @@ hiprtError hiprtCreateGeometries(
 	try
 	{
 		std::vector<hiprtGeometry> geometries =
-			reinterpret_cast<Context*>( context )->createGeometries( buildInputs, buildOptions );
+			reinterpret_cast<GpuContext*>( context )->createGeometries( buildInputs, buildOptions );
 		for ( uint32_t i = 0; i < numGeometries; ++i )
 			*geometriesOut[i] = geometries[i];
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -119,11 +119,11 @@ hiprtError hiprtDestroyGeometries( hiprtContext context, uint32_t numGeometries,
 
 	try
 	{
-		reinterpret_cast<Context*>( context )->destroyGeometries( geometries );
+		reinterpret_cast<GpuContext*>( context )->destroyGeometries( geometries );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -169,12 +169,12 @@ hiprtError hiprtBuildGeometries(
 		switch ( buildOperation )
 		{
 		case hiprtBuildOperationBuild: {
-			reinterpret_cast<Context*>( context )->buildGeometries(
+			reinterpret_cast<GpuContext*>( context )->buildGeometries(
 				buildInputs, buildOptions, temporaryBuffer, reinterpret_cast<oroStream>( stream ), buffers );
 			break;
 		}
 		case hiprtBuildOperationUpdate: {
-			reinterpret_cast<Context*>( context )->updateGeometries(
+			reinterpret_cast<GpuContext*>( context )->updateGeometries(
 				buildInputs, buildOptions, temporaryBuffer, reinterpret_cast<oroStream>( stream ), buffers );
 			break;
 		}
@@ -182,7 +182,7 @@ hiprtError hiprtBuildGeometries(
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 
@@ -211,11 +211,11 @@ hiprtError hiprtGetGeometriesBuildTemporaryBufferSize(
 
 	try
 	{
-		sizeOut = reinterpret_cast<Context*>( context )->getGeometriesBuildTempBufferSize( buildInputs, buildOptions );
+		sizeOut = reinterpret_cast<GpuContext*>( context )->getGeometriesBuildTempBufferSize( buildInputs, buildOptions );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 
@@ -250,13 +250,13 @@ hiprtError hiprtCompactGeometries(
 	try
 	{
 		std::vector<hiprtGeometry> compactedGeometries =
-			reinterpret_cast<Context*>( context )->compactGeometries( geometries, reinterpret_cast<oroStream>( stream ) );
+			reinterpret_cast<GpuContext*>( context )->compactGeometries( geometries, reinterpret_cast<oroStream>( stream ) );
 		for ( uint32_t i = 0; i < numGeometries; ++i )
 			*geometriesOut[i] = compactedGeometries[i];
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -288,13 +288,13 @@ hiprtError hiprtCreateScenes(
 
 	try
 	{
-		std::vector<hiprtScene> scenes = reinterpret_cast<Context*>( context )->createScenes( buildInputs, buildOptions );
+		std::vector<hiprtScene> scenes = reinterpret_cast<GpuContext*>( context )->createScenes( buildInputs, buildOptions );
 		for ( uint32_t i = 0; i < numScenes; ++i )
 			*scenesOut[i] = scenes[i];
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -316,11 +316,11 @@ hiprtError hiprtDestroyScenes( hiprtContext context, uint32_t numScenes, hiprtSc
 
 	try
 	{
-		reinterpret_cast<Context*>( context )->destroyScenes( scenes );
+		reinterpret_cast<GpuContext*>( context )->destroyScenes( scenes );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -365,12 +365,12 @@ hiprtError hiprtBuildScenes(
 		switch ( buildOperation )
 		{
 		case hiprtBuildOperationBuild: {
-			reinterpret_cast<Context*>( context )->buildScenes(
+			reinterpret_cast<GpuContext*>( context )->buildScenes(
 				buildInputs, buildOptions, temporaryBuffer, reinterpret_cast<oroStream>( stream ), buffers );
 			break;
 		}
 		case hiprtBuildOperationUpdate: {
-			reinterpret_cast<Context*>( context )->updateScenes(
+			reinterpret_cast<GpuContext*>( context )->updateScenes(
 				buildInputs, buildOptions, temporaryBuffer, reinterpret_cast<oroStream>( stream ), buffers );
 			break;
 		}
@@ -378,7 +378,7 @@ hiprtError hiprtBuildScenes(
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 
@@ -407,11 +407,11 @@ hiprtError hiprtGetScenesBuildTemporaryBufferSize(
 
 	try
 	{
-		sizeOut = reinterpret_cast<Context*>( context )->getScenesBuildTempBufferSize( buildInputs, buildOptions );
+		sizeOut = reinterpret_cast<GpuContext*>( context )->getScenesBuildTempBufferSize( buildInputs, buildOptions );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 
@@ -440,13 +440,13 @@ hiprtError hiprtCompactScenes(
 	try
 	{
 		std::vector<hiprtScene> compactedScenes =
-			reinterpret_cast<Context*>( context )->compactScenes( scenes, reinterpret_cast<oroStream>( stream ) );
+			reinterpret_cast<GpuContext*>( context )->compactScenes( scenes, reinterpret_cast<oroStream>( stream ) );
 		for ( uint32_t i = 0; i < numScenes; ++i )
 			*scenesOut[i] = compactedScenes[i];
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -458,11 +458,11 @@ hiprtCreateFuncTable( hiprtContext context, uint32_t numGeomTypes, uint32_t numR
 	if ( !context ) return hiprtErrorInvalidParameter;
 	try
 	{
-		funcTableOut = reinterpret_cast<Context*>( context )->createFuncTable( numGeomTypes, numRayTypes );
+		funcTableOut = reinterpret_cast<GpuContext*>( context )->createFuncTable( numGeomTypes, numRayTypes );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -474,11 +474,11 @@ hiprtSetFuncTable( hiprtContext context, hiprtFuncTable funcTable, uint32_t geom
 	if ( !context || !funcTable ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->setFuncTable( funcTable, geomType, rayType, set );
+		reinterpret_cast<GpuContext*>( context )->setFuncTable( funcTable, geomType, rayType, set );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -489,11 +489,11 @@ hiprtError hiprtDestroyFuncTable( hiprtContext context, hiprtFuncTable funcTable
 	if ( !context || !funcTable ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->destroyFuncTable( funcTable );
+		reinterpret_cast<GpuContext*>( context )->destroyFuncTable( funcTable );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -505,11 +505,11 @@ hiprtError hiprtCreateGlobalStackBuffer(
 	if ( !context ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->createGlobalStackBuffer( input, stackBufferOut );
+		reinterpret_cast<GpuContext*>( context )->createGlobalStackBuffer( input, stackBufferOut );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -520,11 +520,11 @@ hiprtError hiprtDestroyGlobalStackBuffer( hiprtContext context, hiprtGlobalStack
 	if ( !context ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->destroyGlobalStackBuffer( stackBuffer );
+		reinterpret_cast<GpuContext*>( context )->destroyGlobalStackBuffer( stackBuffer );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -535,11 +535,11 @@ hiprtError hiprtSaveGeometry( hiprtContext context, hiprtGeometry geometry, cons
 	if ( !context || !geometry || !filename ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->saveGeometry( geometry, filename );
+		reinterpret_cast<GpuContext*>( context )->saveGeometry( geometry, filename );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -550,11 +550,11 @@ hiprtError hiprtLoadGeometry( hiprtContext context, hiprtGeometry& geometryOut, 
 	if ( !context || !filename ) return hiprtErrorInvalidParameter;
 	try
 	{
-		geometryOut = reinterpret_cast<Context*>( context )->loadGeometry( filename );
+		geometryOut = reinterpret_cast<GpuContext*>( context )->loadGeometry( filename );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -565,11 +565,11 @@ hiprtError hiprtSaveScene( hiprtContext context, hiprtScene scene, const char* f
 	if ( !context || !scene || !filename ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->saveScene( scene, filename );
+		reinterpret_cast<GpuContext*>( context )->saveScene( scene, filename );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -580,11 +580,11 @@ hiprtError hiprtLoadScene( hiprtContext context, hiprtScene& sceneOut, const cha
 	if ( !context || !sceneOut || !filename ) return hiprtErrorInvalidParameter;
 	try
 	{
-		sceneOut = reinterpret_cast<Context*>( context )->loadScene( filename );
+		sceneOut = reinterpret_cast<GpuContext*>( context )->loadScene( filename );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -595,11 +595,11 @@ hiprtError hiprtExportGeometryAabb( hiprtContext context, hiprtGeometry geometry
 	if ( !context || !geometry ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->exportGeometryAabb( geometry, aabbMinOut, aabbMaxOut );
+		reinterpret_cast<GpuContext*>( context )->exportGeometryAabb( geometry, aabbMinOut, aabbMaxOut );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -610,11 +610,11 @@ hiprtError hiprtExportSceneAabb( hiprtContext context, hiprtScene scene, float3&
 	if ( !context || !scene ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->exportSceneAabb( scene, aabbMinOut, aabbMaxOut );
+		reinterpret_cast<GpuContext*>( context )->exportSceneAabb( scene, aabbMinOut, aabbMaxOut );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -670,7 +670,7 @@ hiprtError hiprtBuildTraceKernels(
 
 		std::vector<oroFunction> functions;
 		oroModule				 module = nullptr;
-		reinterpret_cast<Context*>( context )->buildKernels(
+		reinterpret_cast<GpuContext*>( context )->buildKernels(
 			funcNames,
 			src,
 			moduleName,
@@ -691,7 +691,7 @@ hiprtError hiprtBuildTraceKernels(
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 
@@ -730,7 +730,7 @@ hiprtError hiprtBuildTraceKernelsFromBitcode(
 		}
 		std::string_view		 binary( bitcodeBinary, bitcodeBinarySize );
 		std::vector<oroFunction> functions;
-		reinterpret_cast<Context*>( context )->buildKernelsFromBitcode(
+		reinterpret_cast<GpuContext*>( context )->buildKernelsFromBitcode(
 			funcNames, moduleName, binary, numGeomTypes, numRayTypes, funcNameSets, functions, cache );
 
 		for ( uint32_t i = 0; i < numFunctions; ++i )
@@ -738,7 +738,7 @@ hiprtError hiprtBuildTraceKernelsFromBitcode(
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 
@@ -750,11 +750,11 @@ hiprtError hiprtSetCacheDirPath( hiprtContext context, const char* path )
 	if ( !context ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->setCacheDir( path );
+		reinterpret_cast<GpuContext*>( context )->setCacheDir( path );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
@@ -765,11 +765,11 @@ hiprtError hiprtSetLogLevel( hiprtContext context, hiprtLogLevel level )
 	if ( !context ) return hiprtErrorInvalidParameter;
 	try
 	{
-		reinterpret_cast<Context*>( context )->setLogLevel( level );
+		reinterpret_cast<GpuContext*>( context )->setLogLevel( level );
 	}
 	catch ( std::exception& e )
 	{
-		reinterpret_cast<Context*>( context )->logError( e.what() );
+		reinterpret_cast<GpuContext*>( context )->logError( e.what() );
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;

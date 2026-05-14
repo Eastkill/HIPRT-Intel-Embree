@@ -22,31 +22,7 @@
 //
 //////////////////////////////////////////////////////////////////////////////////////////
 
-#include <hiprt/impl/BvhCommon.h>
-#include <hiprt/impl/BatchBuilder.h>
+#pragma once
 
-namespace hiprt
-{
-#if !defined( __KERNELCC__ )
-DECLARE_TYPE_TRAITS( hiprtGeometryBuildInput );
-DECLARE_TYPE_TRAITS( hiprtSceneBuildInput );
-#endif
 
-size_t BatchBuilder::getStorageBufferSize(
-	GpuContext& context, const hiprtGeometryBuildInput& buildInput, [[maybe_unused]] const hiprtBuildOptions buildOptions )
-{
-	const size_t primCount	  = getPrimCount( buildInput );
-	const size_t boxNodeCount = getMaxBoxNodeCount( buildInput, context.getRtip(), primCount );
-	return getGeometryStorageBufferSize(
-		primCount, boxNodeCount, getPrimNodeSize( buildInput, context.getTriangleNodeSize() ), context.getBoxNodeSize() );
-}
 
-size_t BatchBuilder::getStorageBufferSize(
-	GpuContext& context, const hiprtSceneBuildInput& buildInput, [[maybe_unused]] const hiprtBuildOptions buildOptions )
-{
-	const size_t primCount	  = buildInput.instanceCount;
-	const size_t boxNodeCount = getMaxBoxNodeCount( buildInput, context.getRtip(), primCount );
-	return getSceneStorageBufferSize(
-		primCount, primCount, boxNodeCount, context.getInstanceNodeSize(), context.getBoxNodeSize(), buildInput.frameCount );
-}
-} // namespace hiprt
