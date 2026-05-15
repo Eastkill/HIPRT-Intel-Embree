@@ -1,5 +1,6 @@
 #pragma once
 #include "ContextBase.h"
+#include "CpuTypes.h"
 
 #include <Orochi/Orochi.h>
 #include <hiprt/hiprt_types.h>
@@ -8,13 +9,15 @@
 #include <hiprt/impl/Logger.h>
 #include <ParallelPrimitives/RadixSort.h>
 
+#include <embree4/rtcore.h>
+
 
 namespace hiprt{
 class CpuContext : public ContextBase
 {
   public:
 	CpuContext( const hiprtContextCreationInput& input );
-	~CpuContext() override = default;
+	~CpuContext() override;
 
 	std::vector<hiprtGeometry>
 	createGeometries( const std::vector<hiprtGeometryBuildInput>& buildInputs, const hiprtBuildOptions buildOptions ) override;
@@ -108,13 +111,18 @@ class CpuContext : public ContextBase
 		std::vector<oroFunction>&			 functions,
 		bool								 cache ) override;
 
-	struct CpuGeometryData* getCpuGeom( hiprtGeometry ) override
+	struct CpuGeometryData* getCpuGeom( hiprtGeometry geometry ) override
 	{
-		return nullptr;
+		return reinterpret_cast<CpuGeometryData*>( geometry );
 	};
 	struct CpuSceneData*	getCpuScene( hiprtScene )	override
 	{
 		return nullptr;
 	};
+
+  private:
+	void buildGeometryEntry( CpuGeometryData* data, const hiprtGeometryBuildInput& input, size_t index );
+
+	RTCDevice m_rtcDevice = nullptr;
 };
 }//namespace hiprt
