@@ -1,8 +1,6 @@
 #include "CpuGeometryTest.h"
 
-#include <hiprt/impl/CpuTypes.h>
-#include <embree4/rtcore.h>
-#include <embree4/rtcore_ray.h>
+#include <hiprt/hiprt_cpu.h>
 
 void CpuGeometryTest::SetUp()
 {
@@ -63,26 +61,14 @@ namespace
 {
 bool traceHit( hiprtGeometry geom, float ox, float oy, float oz, float dx, float dy, float dz )
 {
-	auto* data = reinterpret_cast<hiprt::CpuGeometryData*>( geom );
-	if ( data == nullptr || data->rtcScene == nullptr )
-		return false;
+	hiprtRay ray{};
+	ray.origin	  = { ox, oy, oz };
+	ray.minT	  = 0.0f;
+	ray.direction = { dx, dy, dz };
+	ray.maxT	  = 1e30f;
 
-	RTCRayHit rh{};
-	rh.ray.org_x  = ox;
-	rh.ray.org_y  = oy;
-	rh.ray.org_z  = oz;
-	rh.ray.dir_x  = dx;
-	rh.ray.dir_y  = dy;
-	rh.ray.dir_z  = dz;
-	rh.ray.tnear  = 0.0f;
-	rh.ray.tfar   = 1e30f;
-	rh.ray.mask   = static_cast<unsigned>( -1 );
-	rh.ray.flags  = 0;
-	rh.hit.geomID = RTC_INVALID_GEOMETRY_ID;
-	rh.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
-
-	rtcIntersect1( data->rtcScene, &rh );
-	return rh.hit.geomID != RTC_INVALID_GEOMETRY_ID;
+	hiprtGeomTraversalClosestCPU tr( geom, ray );
+	return tr.getNextHit().hasHit();
 }
 } // namespace
 

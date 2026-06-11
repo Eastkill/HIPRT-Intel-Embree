@@ -1,5 +1,7 @@
 #include "CpuContext.h"
 
+#include <hiprt/impl/Quaternion.h>
+
 #include <iostream>
 #include <stdexcept>
 
@@ -11,6 +13,23 @@ namespace
 {
 	std::cerr << "[CpuContext] not implemented: " << what << std::endl;
 	throw std::runtime_error( what );
+}
+
+void srtFrameToMatrix3x4( const hiprtFrameSRT& f, float ( &m )[3][4] )
+{
+	const float4 q = qtFromAxisAngle( f.rotation );
+	float		 Q[3][3];
+	qtToRotationMatrix( q, Q );
+	const float s[3] = { f.scale.x, f.scale.y, f.scale.z };
+	for ( int i = 0; i < 3; ++i )
+	{
+		m[i][0] = Q[i][0] * s[0];
+		m[i][1] = Q[i][1] * s[1];
+		m[i][2] = Q[i][2] * s[2];
+	}
+	m[0][3] = f.translation.x;
+	m[1][3] = f.translation.y;
+	m[2][3] = f.translation.z;
 }
 } // namespace
 
@@ -209,31 +228,173 @@ std::vector<hiprtGeometry> CpuContext::compactGeometries( const std::vector<hipr
 	throwNotImplemented( "CpuContext::compactGeometries is not implemented yet." );
 }
 
-std::vector<hiprtScene> CpuContext::createScenes( const std::vector<hiprtSceneBuildInput>&, const hiprtBuildOptions )
+std::vector<hiprtScene> CpuContext::createScenes(
+	const std::vector<hiprtSceneBuildInput>& buildInputs, const hiprtBuildOptions )
 {
-	throwNotImplemented( "CpuContext::createScenes is not implemented yet." );
+	std::vector<hiprtScene> scenes;
+	scenes.reserve( buildInputs.size() );
+
+	for ( size_t i = 0; i < buildInputs.size(); ++i )
+	{
+		CpuSceneData* data = new CpuSceneData();
+		data->rtcDevice	   = m_rtcDevice;
+		data->rtcScene	   = rtcNewScene( m_rtcDevice );
+
+		if ( data->rtcScene == nullptr )
+		{
+			const RTCError err = rtcGetDeviceError( m_rtcDevice );
+			delete data;
+			std::cerr << "[CpuContext] rtcNewScene failed at index " << i
+					  << ", RTCError=" << static_cast<int>( err ) << std::endl;
+			throw std::runtime_error( "rtcNewScene failed" );
+		}
+
+		scenes.push_back( reinterpret_cast<hiprtScene>( data ) );
+	}
+	return scenes;
 }
 
-void CpuContext::destroyScenes( const std::vector<hiprtScene>& ) { throwNotImplemented( "CpuContext::destroyScenes is not implemented yet." ); }
+void CpuContext::destroyScenes( const std::vector<hiprtScene>& scenes )
+{
+	for ( hiprtScene scene : scenes )
+	{
+		CpuSceneData* data = getCpuScene( scene );
+		if ( data == nullptr ) continue;
+
+		if ( data->rtcScene != nullptr )
+		{
+			rtcReleaseScene( data->rtcScene );
+			data->rtcScene = nullptr;
+		}
+		delete data;
+	}
+}
+
+void CpuContext::buildSceneEntry( CpuSceneData* data, const hiprtSceneBuildInput& input, size_t index )
+{
+	if ( data == nullptr || data->rtcScene == nullptr )
+		throw std::runtime_error( "CpuContext::buildSceneEntry: invalid scene handle" );
+
+	const hiprtInstance* instances =
+		reinterpret_cast<const hiprtInstance*>( input.instances );
+	const hiprtTransformHeader* headers =
+		reinterpret_cast<const hiprtTransformHeader*>( input.instanceTransformHeaders );
+
+	if ( instances == nullptr && input.instanceCount != 0 )
+		throw std::runtime_error( "CpuContext::buildSceneEntry: null instances array" );
+
+	for ( uint32_t i = 0; i < input.instanceCount; ++i )
+	{
+		const hiprtInstance& inst = instances[i];
+
+		RTCScene child = nullptr;
+		if ( inst.type == hiprtInstanceTypeGeometry )
+		{
+			CpuGeometryData* g = getCpuGeom( inst.geometry );
+			child			   = ( g != nullptr ) ? g->rtcScene : nullptr;
+		}
+		else
+		{
+			CpuSceneData* s = getCpuScene( inst.scene );
+			child			= ( s != nullptr ) ? s->rtcScene : nullptr;
+		}
+
+		if ( child == nullptr )
+			throw std::runtime_error( "CpuContext::buildSceneEntry: instance has null child scene" );
+
+		RTCGeometry instGeom = rtcNewGeometry( m_rtcDevice, RTC_GEOMETRY_TYPE_INSTANCE );
+		if ( instGeom == nullptr )
+		{
+			const RTCError err = rtcGetDeviceError( m_rtcDevice );
+			std::cerr << "[CpuContext] rtcNewGeometry(INSTANCE) failed at scene " << index
+					  << " instance " << i << ", RTCError=" << static_cast<int>( err ) << std::endl;
+			throw std::runtime_error( "rtcNewGeometry(INSTANCE) failed" );
+		}
+
+		rtcSetGeometryInstancedScene( instGeom, child );
+
+		float xfm[3][4];
+		if ( input.instanceFrames == nullptr )
+		{
+			xfm[0][0] = 1.0f; xfm[0][1] = 0.0f; xfm[0][2] = 0.0f; xfm[0][3] = 0.0f;
+			xfm[1][0] = 0.0f; xfm[1][1] = 1.0f; xfm[1][2] = 0.0f; xfm[1][3] = 0.0f;
+			xfm[2][0] = 0.0f; xfm[2][1] = 0.0f; xfm[2][2] = 1.0f; xfm[2][3] = 0.0f;
+		}
+		else
+		{
+			const uint32_t frameIndex = ( headers != nullptr ) ? headers[i].frameIndex : i;
+
+			if ( input.frameType == hiprtFrameTypeMatrix )
+			{
+				const hiprtFrameMatrix* mats =
+					reinterpret_cast<const hiprtFrameMatrix*>( input.instanceFrames );
+				for ( int r = 0; r < 3; ++r )
+					for ( int c = 0; c < 4; ++c )
+						xfm[r][c] = mats[frameIndex].matrix[r][c];
+			}
+			else
+			{
+				const hiprtFrameSRT* srts =
+					reinterpret_cast<const hiprtFrameSRT*>( input.instanceFrames );
+				srtFrameToMatrix3x4( srts[frameIndex], xfm );
+			}
+		}
+
+		rtcSetGeometryTransform( instGeom, 0, RTC_FORMAT_FLOAT3X4_ROW_MAJOR, &xfm[0][0] );
+		rtcCommitGeometry( instGeom );
+		rtcAttachGeometry( data->rtcScene, instGeom );
+		rtcReleaseGeometry( instGeom );
+	}
+
+	rtcCommitScene( data->rtcScene );
+}
 
 void CpuContext::buildScenes(
-	const std::vector<hiprtSceneBuildInput>&,
-	const hiprtBuildOptions,
-	hiprtDevicePtr,
-	oroStream,
-	std::vector<hiprtDevicePtr>& )
+	const std::vector<hiprtSceneBuildInput>& buildInputs,
+	const hiprtBuildOptions					 buildOptions,
+	hiprtDevicePtr							 temporaryBuffer,
+	oroStream								 stream,
+	std::vector<hiprtDevicePtr>&			 buffers )
 {
-	throwNotImplemented( "CpuContext::buildScenes is not implemented yet." );
+	(void)buildOptions;
+	(void)temporaryBuffer;
+	(void)stream;
+
+	for ( size_t i = 0; i < buildInputs.size(); ++i )
+		buildSceneEntry( getCpuScene( reinterpret_cast<hiprtScene>( buffers[i] ) ), buildInputs[i], i );
 }
 
 void CpuContext::updateScenes(
-	const std::vector<hiprtSceneBuildInput>&,
-	const hiprtBuildOptions,
-	hiprtDevicePtr,
-	oroStream,
-	std::vector<hiprtDevicePtr>& )
+	const std::vector<hiprtSceneBuildInput>& buildInputs,
+	const hiprtBuildOptions					 buildOptions,
+	hiprtDevicePtr							 temporaryBuffer,
+	oroStream								 stream,
+	std::vector<hiprtDevicePtr>&			 buffers )
 {
-	throwNotImplemented( "CpuContext::updateScenes is not implemented yet." );
+	(void)buildOptions;
+	(void)temporaryBuffer;
+	(void)stream;
+
+	for ( size_t i = 0; i < buildInputs.size(); ++i )
+	{
+		CpuSceneData* data = getCpuScene( reinterpret_cast<hiprtScene>( buffers[i] ) );
+		if ( data == nullptr )
+			throw std::runtime_error( "CpuContext::updateScenes: invalid scene handle" );
+
+		if ( data->rtcScene != nullptr )
+			rtcReleaseScene( data->rtcScene );
+
+		data->rtcScene = rtcNewScene( m_rtcDevice );
+		if ( data->rtcScene == nullptr )
+		{
+			const RTCError err = rtcGetDeviceError( m_rtcDevice );
+			std::cerr << "[CpuContext] rtcNewScene failed at index " << i
+					  << ", RTCError=" << static_cast<int>( err ) << std::endl;
+			throw std::runtime_error( "rtcNewScene failed" );
+		}
+
+		buildSceneEntry( data, buildInputs[i], i );
+	}
 }
 
 size_t CpuContext::getScenesBuildTempBufferSize( const std::vector<hiprtSceneBuildInput>&, const hiprtBuildOptions )

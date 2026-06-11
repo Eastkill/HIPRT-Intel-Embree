@@ -115,13 +115,14 @@ class CpuContext : public ContextBase
 	{
 		return reinterpret_cast<CpuGeometryData*>( geometry );
 	};
-	struct CpuSceneData*	getCpuScene( hiprtScene )	override
+	struct CpuSceneData*	getCpuScene( hiprtScene scene )	override
 	{
-		return nullptr;
+		return reinterpret_cast<CpuSceneData*>( scene );
 	};
 
   private:
 	void buildGeometryEntry( CpuGeometryData* data, const hiprtGeometryBuildInput& input, size_t index );
+	void buildSceneEntry( CpuSceneData* data, const hiprtSceneBuildInput& input, size_t index );
 
 	RTCDevice m_rtcDevice = nullptr;
 };
