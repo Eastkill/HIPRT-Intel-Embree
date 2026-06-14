@@ -314,6 +314,7 @@ enum hiprtDeviceType : uint32_t
 	hiprtDeviceAMD    = 1 << 0,
 	hiprtDeviceNVIDIA = 1 << 1,
 	hiprtDeviceCPU    = 1 << 2,
+	hiprtDeviceHybrid = 1 << 3,
 };
 
 /** \brief Context creation input.

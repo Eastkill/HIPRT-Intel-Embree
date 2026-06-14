@@ -1,4 +1,5 @@
 #include "CpuContext.h"
+#include <hiprt/impl/CpuDataRegistry.h>
 
 #include <hiprt/impl/Quaternion.h>
 
@@ -82,7 +83,9 @@ std::vector<hiprtGeometry> CpuContext::createGeometries(
 			throw std::runtime_error( "rtcNewScene failed" );
 		}
 
-		geometries.push_back( reinterpret_cast<hiprtGeometry>( data ) );
+		hiprtGeometry handle = reinterpret_cast<hiprtGeometry>( data );
+		registerCpuGeom( handle, data );
+		geometries.push_back( handle );
 	}
 
 	return geometries;
@@ -94,6 +97,8 @@ void CpuContext::destroyGeometries( const std::vector<hiprtGeometry>& geometries
 	{
 		CpuGeometryData* data = reinterpret_cast<CpuGeometryData*>( geometry );
 		if ( data == nullptr ) continue;
+
+		unregisterCpuGeom( geometry );
 
 		if ( data->rtcScene != nullptr )
 		{
@@ -249,7 +254,9 @@ std::vector<hiprtScene> CpuContext::createScenes(
 			throw std::runtime_error( "rtcNewScene failed" );
 		}
 
-		scenes.push_back( reinterpret_cast<hiprtScene>( data ) );
+		hiprtScene handle = reinterpret_cast<hiprtScene>( data );
+		registerCpuScene( handle, data );
+		scenes.push_back( handle );
 	}
 	return scenes;
 }
@@ -260,6 +267,8 @@ void CpuContext::destroyScenes( const std::vector<hiprtScene>& scenes )
 	{
 		CpuSceneData* data = getCpuScene( scene );
 		if ( data == nullptr ) continue;
+
+		unregisterCpuScene( scene );
 
 		if ( data->rtcScene != nullptr )
 		{

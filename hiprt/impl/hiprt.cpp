@@ -26,12 +26,70 @@
 #include <hiprt/hiprt_libpath.h>
 #include <hiprt/impl/ContextBase.h>
 #include <hiprt/impl/CpuContext.h>
+#include <hiprt/impl/CpuDataRegistry.h>
+#include <hiprt/impl/CpuTypes.h>
 #include <hiprt/impl/Error.h>
 #include <hiprt/impl/GpuContext.h>
 #include <hiprt/impl/Header.h>
+#include <hiprt/impl/HybridContext.h>
 #include <hiprt/impl/Utility.h>
 
+#include <mutex>
+#include <unordered_map>
+
 using namespace hiprt;
+
+// ---------------------------------------------------------------------------
+// Global CPU-data registry implementation
+// ---------------------------------------------------------------------------
+namespace hiprt
+{
+namespace
+{
+std::mutex						   g_cpuGeomMutex;
+std::unordered_map<void*, void*>   g_cpuGeomMap;
+std::mutex						   g_cpuSceneMutex;
+std::unordered_map<void*, void*>   g_cpuSceneMap;
+} // namespace
+
+void registerCpuGeom( hiprtGeometry handle, CpuGeometryData* data )
+{
+	std::lock_guard<std::mutex> lk( g_cpuGeomMutex );
+	g_cpuGeomMap[static_cast<void*>( handle )] = static_cast<void*>( data );
+}
+
+void unregisterCpuGeom( hiprtGeometry handle )
+{
+	std::lock_guard<std::mutex> lk( g_cpuGeomMutex );
+	g_cpuGeomMap.erase( static_cast<void*>( handle ) );
+}
+
+CpuGeometryData* lookupCpuGeom( hiprtGeometry handle )
+{
+	std::lock_guard<std::mutex> lk( g_cpuGeomMutex );
+	auto it = g_cpuGeomMap.find( static_cast<void*>( handle ) );
+	return ( it != g_cpuGeomMap.end() ) ? static_cast<CpuGeometryData*>( it->second ) : nullptr;
+}
+
+void registerCpuScene( hiprtScene handle, CpuSceneData* data )
+{
+	std::lock_guard<std::mutex> lk( g_cpuSceneMutex );
+	g_cpuSceneMap[static_cast<void*>( handle )] = static_cast<void*>( data );
+}
+
+void unregisterCpuScene( hiprtScene handle )
+{
+	std::lock_guard<std::mutex> lk( g_cpuSceneMutex );
+	g_cpuSceneMap.erase( static_cast<void*>( handle ) );
+}
+
+CpuSceneData* lookupCpuScene( hiprtScene handle )
+{
+	std::lock_guard<std::mutex> lk( g_cpuSceneMutex );
+	auto it = g_cpuSceneMap.find( static_cast<void*>( handle ) );
+	return ( it != g_cpuSceneMap.end() ) ? static_cast<CpuSceneData*>( it->second ) : nullptr;
+}
+} // namespace hiprt
 
 namespace
 {
@@ -57,9 +115,16 @@ hiprtError hiprtCreateContext( uint32_t hiprtApiVersion, const hiprtContextCreat
 			// Pure CPU context: no Orochi/HIP/CUDA init needed.
 			ctxt = new CpuContext( input );
 		}
+		else if ( input.deviceType == hiprtDeviceHybrid )
+		{
+			// Hybrid context: GPU BVH via hiprt + CPU Embree mirror in parallel.
+			// Default to HIP; can be extended later with a secondary GPU-type flag.
+			oroInitialize( ORO_API_HIP, 0, g_hip_paths, g_hiprtc_paths );
+			ctxt = new HybridContext( input );
+		}
 		else
 		{
-			// GPU (and, later, GPU+CPU hybrid). Picking the underlying API:
+			// Pure GPU. Picking the underlying API:
 			// AMD bit set => HIP, otherwise treat as NVIDIA/CUDA.
 			oroInitialize(
 				( input.deviceType & hiprtDeviceAMD ) ? ORO_API_HIP : ORO_API_CUDA,
@@ -803,4 +868,14 @@ hiprtError hiprtSetLogLevel( hiprtContext context, hiprtLogLevel level )
 		return hiprtErrorInternal;
 	}
 	return hiprtSuccess;
+}
+
+void* hiprtGetInternalCpuDataFromGeometry( hiprtGeometry geometry )
+{
+	return static_cast<void*>( hiprt::lookupCpuGeom( geometry ) );
+}
+
+void* hiprtGetInternalCpuDataFromScene( hiprtScene scene )
+{
+	return static_cast<void*>( hiprt::lookupCpuScene( scene ) );
 }

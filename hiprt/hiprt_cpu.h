@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <hiprt/hiprt.h>      // HIPRT_API + hiprtGetInternalCpuDataFromGeometry/Scene
 #include <hiprt/hiprt_types.h>
 #include <hiprt/impl/CpuTypes.h>
 #include <embree4/rtcore.h>
@@ -90,8 +91,8 @@ class hiprtGeomTraversalClosestCPU
   public:
 	hiprtGeomTraversalClosestCPU( hiprtGeometry geom, const hiprtRay& ray ) noexcept
 	{
-		m_rayHit = hiprt_cpu_detail::makeRTCRayHit( ray );
-		auto* data = reinterpret_cast<hiprt::CpuGeometryData*>( geom );
+		m_rayHit   = hiprt_cpu_detail::makeRTCRayHit( ray );
+		auto* data = reinterpret_cast<hiprt::CpuGeometryData*>( hiprtGetInternalCpuDataFromGeometry( geom ) );
 		if ( data != nullptr && data->rtcScene != nullptr )
 			rtcIntersect1( data->rtcScene, &m_rayHit );
 	}
@@ -119,8 +120,8 @@ class hiprtSceneTraversalClosestCPU
   public:
 	hiprtSceneTraversalClosestCPU( hiprtScene scene, const hiprtRay& ray ) noexcept
 	{
-		m_rayHit = hiprt_cpu_detail::makeRTCRayHit( ray );
-		auto* data = reinterpret_cast<hiprt::CpuSceneData*>( scene );
+		m_rayHit   = hiprt_cpu_detail::makeRTCRayHit( ray );
+		auto* data = reinterpret_cast<hiprt::CpuSceneData*>( hiprtGetInternalCpuDataFromScene( scene ) );
 		if ( data != nullptr && data->rtcScene != nullptr )
 			rtcIntersect1( data->rtcScene, &m_rayHit );
 	}
