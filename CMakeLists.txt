@@ -680,6 +680,8 @@ if(NOT NO_UNITTEST)
 		"${CMAKE_CURRENT_SOURCE_DIR}/test/hiprtT*.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/test/Cpu*Test.h"
 		"${CMAKE_CURRENT_SOURCE_DIR}/test/Cpu*Test.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/test/Hybrid*Test.h"
+		"${CMAKE_CURRENT_SOURCE_DIR}/test/Hybrid*Test.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/test/shared.h"
 		"${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/test/CornellBox.h"

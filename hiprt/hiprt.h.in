@@ -602,7 +602,7 @@ HIPRT_API hiprtError hiprtSetLogLevel( hiprtContext context, hiprtLogLevel level
 
 /** \brief Returns the Embree CpuGeometryData pointer associated with a geometry handle.
  *
- * Works for both pure-CPU (hiprtDeviceCPU) and hybrid (hiprtDeviceHybrid) contexts.
+ * Works for both pure-CPU (hiprtDeviceCPU) and hybrid (hiprtDeviceAMD | hiprtDeviceCPU) contexts.
  * Returns nullptr if the handle has no CPU mirror (pure GPU context).
  * The returned pointer is opaque; cast it to hiprt::CpuGeometryData* in hiprt_cpu.h.
  *
@@ -613,7 +613,7 @@ HIPRT_API void* hiprtGetInternalCpuDataFromGeometry( hiprtGeometry geometry );
 
 /** \brief Returns the Embree CpuSceneData pointer associated with a scene handle.
  *
- * Works for both pure-CPU (hiprtDeviceCPU) and hybrid (hiprtDeviceHybrid) contexts.
+ * Works for both pure-CPU (hiprtDeviceCPU) and hybrid (hiprtDeviceAMD | hiprtDeviceCPU) contexts.
  * Returns nullptr if the handle has no CPU mirror (pure GPU context).
  * The returned pointer is opaque; cast it to hiprt::CpuSceneData* in hiprt_cpu.h.
  *

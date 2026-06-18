@@ -67,7 +67,8 @@ hiprtFrameSRT makeSrt( float tx, float ty, float tz )
 	return f;
 }
 
-bool traceScene( hiprtScene scene, float ox, float oy, float oz, float dx, float dy, float dz )
+bool traceScene(
+	hiprtContext ctx, hiprtScene scene, float ox, float oy, float oz, float dx, float dy, float dz )
 {
 	hiprtRay ray{};
 	ray.origin	  = { ox, oy, oz };
@@ -75,8 +76,8 @@ bool traceScene( hiprtScene scene, float ox, float oy, float oz, float dx, float
 	ray.direction = { dx, dy, dz };
 	ray.maxT	  = 1e30f;
 
-	hiprtSceneTraversalClosestCPU tr( scene, ray );
-	const hiprtHit hit = tr.getNextHit();
+	hiprtHit hit{};
+	hiprtGeomTraversalClosestCPU::traceBatch( ctx, scene, &ray, &hit, 1 );
 	return hit.instanceID != hiprtInvalidValue;
 }
 } // namespace
@@ -127,9 +128,9 @@ TEST_F( CpuSceneTest, BuildSceneWithSingleInstanceIsHittable )
 		hiprtBuildScene( m_context, hiprtBuildOperationBuild, in, opts, nullptr, nullptr, scene ),
 		hiprtSuccess );
 
-	EXPECT_TRUE( traceScene( scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_TRUE( traceScene( m_context, scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Promien w obszar instancji powinien trafic.";
-	EXPECT_FALSE( traceScene( scene, 5.0f, 5.0f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_FALSE( traceScene( m_context, scene, 5.0f, 5.0f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Promien poza instancja nie powinien trafic.";
 
 	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );
@@ -165,9 +166,9 @@ TEST_F( CpuSceneTest, BuildSceneWithTranslatedInstance )
 		hiprtBuildScene( m_context, hiprtBuildOperationBuild, in, opts, nullptr, nullptr, scene ),
 		hiprtSuccess );
 
-	EXPECT_TRUE( traceScene( scene, 3.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_TRUE( traceScene( m_context, scene, 3.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Po translacji +3X instancja powinna byc trafiona w x=3.25.";
-	EXPECT_FALSE( traceScene( scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_FALSE( traceScene( m_context, scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Oryginalna pozycja x=0.25 nie powinna byc juz trafiona.";
 
 	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );
@@ -203,7 +204,7 @@ TEST_F( CpuSceneTest, UpdateSceneRebuildsInstances )
 		hiprtBuildScene( m_context, hiprtBuildOperationBuild, in, opts, nullptr, nullptr, scene ),
 		hiprtSuccess );
 
-	EXPECT_TRUE( traceScene( scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_TRUE( traceScene( m_context, scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Przed update trafienie w x=0.25.";
 
 	frames[0]		  = makeSrt( 3.0f, 0.0f, 0.0f );
@@ -213,9 +214,9 @@ TEST_F( CpuSceneTest, UpdateSceneRebuildsInstances )
 		hiprtSuccess )
 		<< "hiprtBuildScene (Update) failed.";
 
-	EXPECT_FALSE( traceScene( scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_FALSE( traceScene( m_context, scene, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Po update instancja przesunieta, stara pozycja pusta.";
-	EXPECT_TRUE( traceScene( scene, 3.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_TRUE( traceScene( m_context, scene, 3.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Po update trafienie w nowej pozycji x=3.25.";
 
 	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );

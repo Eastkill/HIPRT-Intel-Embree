@@ -115,17 +115,19 @@ hiprtError hiprtCreateContext( uint32_t hiprtApiVersion, const hiprtContextCreat
 			// Pure CPU context: no Orochi/HIP/CUDA init needed.
 			ctxt = new CpuContext( input );
 		}
-		else if ( input.deviceType == hiprtDeviceHybrid )
+		else if ( input.deviceType & hiprtDeviceCPU )
 		{
-			// Hybrid context: GPU BVH via hiprt + CPU Embree mirror in parallel.
-			// Default to HIP; can be extended later with a secondary GPU-type flag.
-			oroInitialize( ORO_API_HIP, 0, g_hip_paths, g_hiprtc_paths );
+			// Hybrid: hiprtDeviceAMD | hiprtDeviceCPU or hiprtDeviceNVIDIA | hiprtDeviceCPU.
+			oroInitialize(
+				( input.deviceType & hiprtDeviceAMD ) ? ORO_API_HIP : ORO_API_CUDA,
+				0,
+				g_hip_paths,
+				g_hiprtc_paths );
 			ctxt = new HybridContext( input );
 		}
 		else
 		{
-			// Pure GPU. Picking the underlying API:
-			// AMD bit set => HIP, otherwise treat as NVIDIA/CUDA.
+			// Pure GPU. AMD bit set => HIP, otherwise treat as NVIDIA/CUDA.
 			oroInitialize(
 				( input.deviceType & hiprtDeviceAMD ) ? ORO_API_HIP : ORO_API_CUDA,
 				0,

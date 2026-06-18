@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include <hiprt/hiprt.h>      // HIPRT_API + hiprtGetInternalCpuDataFromGeometry/Scene
+#include <hiprt/hiprt.h>
 #include <hiprt/hiprt_types.h>
 #include <hiprt/impl/CpuTypes.h>
 #include <embree4/rtcore.h>
@@ -58,7 +58,7 @@ inline hiprtHit makeHiprtHit( const RTCRayHit& rh ) noexcept
 {
 	hiprtHit hit{};
 	if ( rh.hit.geomID == RTC_INVALID_GEOMETRY_ID )
-		return hit; // primID stays hiprtInvalidValue -> hasHit() == false
+		return hit;
 
 	hit.primID		= rh.hit.primID;
 	hit.instanceID	= ( rh.hit.instID[0] != RTC_INVALID_GEOMETRY_ID )
@@ -69,68 +69,67 @@ inline hiprtHit makeHiprtHit( const RTCRayHit& rh ) noexcept
 	hit.normal.x	= rh.hit.Ng_x;
 	hit.normal.y	= rh.hit.Ng_y;
 	hit.normal.z	= rh.hit.Ng_z;
-	hit.t			= rh.ray.tfar; // Embree writes the hit distance into tfar
+	hit.t			= rh.ray.tfar;
 	return hit;
+}
+
+inline void traceGeometryBatch(
+	RTCScene scene, const hiprtRay* rays, hiprtHit* hits, uint32_t count ) noexcept
+{
+	if ( scene == nullptr )
+	{
+		for ( uint32_t i = 0; i < count; ++i )
+			hits[i] = hiprtHit{};
+		return;
+	}
+
+	for ( uint32_t i = 0; i < count; ++i )
+	{
+		RTCRayHit rh = makeRTCRayHit( rays[i] );
+		rtcIntersect1( scene, &rh );
+		hits[i] = makeHiprtHit( rh );
+	}
 }
 
 } // namespace hiprt_cpu_detail
 
 // ---------------------------------------------------------------------------
-// Public CPU traversal objects
+// Public CPU traversal API
 // ---------------------------------------------------------------------------
 
-/** \brief Host-side traversal that finds the closest hit in a hiprtGeometry.
+/** \brief Host-side batch traversal that finds the closest hit.
  *
- * Mirrors the GPU class hiprtGeomTraversalClosest. Constructing the object
- * immediately casts the handle to CpuGeometryData, retrieves the underlying
- * RTCScene built by CpuContext, and calls rtcIntersect1.
- * Call getNextHit() to obtain the result.
+ * In CPU-only mode the handle is a direct CpuGeometryData / CpuSceneData pointer.
+ * In hybrid mode (hiprtDeviceAMD | hiprtDeviceCPU or hiprtDeviceNVIDIA | hiprtDeviceCPU)
+ * geometry and scene handles are GPU handles; the CPU Embree mirror is resolved
+ * through the context side table.
  */
 class hiprtGeomTraversalClosestCPU
 {
   public:
-	hiprtGeomTraversalClosestCPU( hiprtGeometry geom, const hiprtRay& ray ) noexcept
+	static void traceBatch(
+		hiprtContext	 ctx,
+		hiprtGeometry	 geom,
+		const hiprtRay*	 rays,
+		hiprtHit*		 hits,
+		uint32_t		 count ) noexcept
 	{
-		m_rayHit   = hiprt_cpu_detail::makeRTCRayHit( ray );
+		(void)ctx;
 		auto* data = reinterpret_cast<hiprt::CpuGeometryData*>( hiprtGetInternalCpuDataFromGeometry( geom ) );
-		if ( data != nullptr && data->rtcScene != nullptr )
-			rtcIntersect1( data->rtcScene, &m_rayHit );
+		hiprt_cpu_detail::traceGeometryBatch(
+			( data != nullptr ) ? data->rtcScene : nullptr, rays, hits, count );
 	}
 
-	hiprtHit getNextHit() const noexcept
+	static void traceBatch(
+		hiprtContext	 ctx,
+		hiprtScene		 scene,
+		const hiprtRay*	 rays,
+		hiprtHit*		 hits,
+		uint32_t		 count ) noexcept
 	{
-		return hiprt_cpu_detail::makeHiprtHit( m_rayHit );
-	}
-
-  private:
-	RTCRayHit m_rayHit{};
-};
-
-/** \brief Host-side traversal that finds the closest hit in a hiprtScene.
- *
- * Mirrors the GPU class hiprtSceneTraversalClosest. Constructing the object
- * immediately casts the handle to CpuSceneData, retrieves the underlying
- * RTCScene built by CpuContext (which already encodes the full instance
- * hierarchy via RTC_GEOMETRY_TYPE_INSTANCE), and calls rtcIntersect1.
- * Call getNextHit() to obtain the result, including instanceID populated
- * from instID[0].
- */
-class hiprtSceneTraversalClosestCPU
-{
-  public:
-	hiprtSceneTraversalClosestCPU( hiprtScene scene, const hiprtRay& ray ) noexcept
-	{
-		m_rayHit   = hiprt_cpu_detail::makeRTCRayHit( ray );
+		(void)ctx;
 		auto* data = reinterpret_cast<hiprt::CpuSceneData*>( hiprtGetInternalCpuDataFromScene( scene ) );
-		if ( data != nullptr && data->rtcScene != nullptr )
-			rtcIntersect1( data->rtcScene, &m_rayHit );
+		hiprt_cpu_detail::traceGeometryBatch(
+			( data != nullptr ) ? data->rtcScene : nullptr, rays, hits, count );
 	}
-
-	hiprtHit getNextHit() const noexcept
-	{
-		return hiprt_cpu_detail::makeHiprtHit( m_rayHit );
-	}
-
-  private:
-	RTCRayHit m_rayHit{};
 };

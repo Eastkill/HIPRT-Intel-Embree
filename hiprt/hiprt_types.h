@@ -314,11 +314,16 @@ enum hiprtDeviceType : uint32_t
 	hiprtDeviceAMD    = 1 << 0,
 	hiprtDeviceNVIDIA = 1 << 1,
 	hiprtDeviceCPU    = 1 << 2,
-	hiprtDeviceHybrid = 1 << 3,
 };
 
 /** \brief Context creation input.
  *
+ * Hybrid mode is selected with hiprtDeviceAMD | hiprtDeviceCPU or
+ * hiprtDeviceNVIDIA | hiprtDeviceCPU.
+ *
+ * For hiprtDeviceCPU and hybrid modes, all geometry/scene build inputs
+ * (vertices, indices, instances, transforms, etc.) must be host-readable.
+ * Use managed/UVA or pinned mapped allocations so Embree can read them on CPU.
  */
 struct hiprtContextCreationInput
 {

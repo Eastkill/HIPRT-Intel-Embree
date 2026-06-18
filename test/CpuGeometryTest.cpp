@@ -59,7 +59,8 @@ hiprtGeometry CpuGeometryTest::buildSampleTriangle(
 
 namespace
 {
-bool traceHit( hiprtGeometry geom, float ox, float oy, float oz, float dx, float dy, float dz )
+bool traceHit(
+	hiprtContext ctx, hiprtGeometry geom, float ox, float oy, float oz, float dx, float dy, float dz )
 {
 	hiprtRay ray{};
 	ray.origin	  = { ox, oy, oz };
@@ -67,8 +68,9 @@ bool traceHit( hiprtGeometry geom, float ox, float oy, float oz, float dx, float
 	ray.direction = { dx, dy, dz };
 	ray.maxT	  = 1e30f;
 
-	hiprtGeomTraversalClosestCPU tr( geom, ray );
-	return tr.getNextHit().hasHit();
+	hiprtHit hit{};
+	hiprtGeomTraversalClosestCPU::traceBatch( ctx, geom, &ray, &hit, 1 );
+	return hit.hasHit();
 }
 } // namespace
 
@@ -111,9 +113,9 @@ TEST_F( CpuGeometryTest, BuildGeometryProducesHittableBvh )
 	hiprtGeometry				geom = buildSampleTriangle( vertices, indices, in );
 	ASSERT_TRUE( geom != nullptr );
 
-	EXPECT_TRUE( traceHit( geom, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_TRUE( traceHit( m_context, geom, 0.25f, 0.25f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Promien ze srodka trojkata powinien trafic w zbudowane BVH.";
-	EXPECT_FALSE( traceHit( geom, 2.0f, 2.0f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_FALSE( traceHit( m_context, geom, 2.0f, 2.0f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Promien poza trojkatem nie powinien trafiac.";
 
 	ASSERT_EQ( hiprtDestroyGeometry( m_context, geom ), hiprtSuccess );
@@ -127,7 +129,7 @@ TEST_F( CpuGeometryTest, UpdateGeometryRebuildsBvh )
 	hiprtGeometry				geom = buildSampleTriangle( vertices, indices, in );
 	ASSERT_TRUE( geom != nullptr );
 
-	EXPECT_FALSE( traceHit( geom, 0.1f, 1.5f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_FALSE( traceHit( m_context, geom, 0.1f, 1.5f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Przed update BVH nie powinno obejmowac y=1.5.";
 
 	vertices[2]							 = { 0.0f, 2.0f, 0.0f };
@@ -140,7 +142,7 @@ TEST_F( CpuGeometryTest, UpdateGeometryRebuildsBvh )
 		hiprtSuccess )
 		<< "hiprtBuildGeometry (Update) failed to rebuild the scene.";
 
-	EXPECT_TRUE( traceHit( geom, 0.1f, 1.5f, -1.0f, 0.0f, 0.0f, 1.0f ) )
+	EXPECT_TRUE( traceHit( m_context, geom, 0.1f, 1.5f, -1.0f, 0.0f, 0.0f, 1.0f ) )
 		<< "Po update BVH powinno obejmowac y=1.5 (nowy wierzcholek y=2).";
 
 	ASSERT_EQ( hiprtDestroyGeometry( m_context, geom ), hiprtSuccess );

@@ -1,12 +1,22 @@
 #include <hiprt/impl/HybridContext.h>
 #include <hiprt/impl/CpuDataRegistry.h>
 
+#include <Orochi/Orochi.h>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
 
 namespace hiprt
 {
+namespace
+{
+void syncGpu( oroStream stream )
+{
+	const oroError err = ( stream != nullptr ) ? oroStreamSynchronize( stream ) : oroDeviceSynchronize();
+	if ( err != oroSuccess )
+		throw std::runtime_error( "HybridContext: GPU synchronization failed before CPU mirror build" );
+}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Construction / destruction
@@ -15,7 +25,7 @@ namespace hiprt
 HybridContext::HybridContext( const hiprtContextCreationInput& input )
 	: m_gpu( input ), m_cpu( input )
 {
-	std::cerr << "[HybridContext] constructed — GPU BVH + Embree CPU mirror active.\n";
+	std::cerr << "[HybridContext] constructed - GPU BVH + Embree CPU mirror active.\n";
 }
 
 HybridContext::~HybridContext()
@@ -95,6 +105,7 @@ void HybridContext::buildGeometries(
 	std::vector<hiprtDevicePtr>&				buffers )
 {
 	m_gpu.buildGeometries( buildInputs, buildOptions, temporaryBuffer, stream, buffers );
+	syncGpu( stream );
 	dispatchCpuGeomBuild( buildInputs, buffers, false );
 }
 
@@ -106,6 +117,7 @@ void HybridContext::updateGeometries(
 	std::vector<hiprtDevicePtr>&				buffers )
 {
 	m_gpu.updateGeometries( buildInputs, buildOptions, temporaryBuffer, stream, buffers );
+	syncGpu( stream );
 	dispatchCpuGeomBuild( buildInputs, buffers, true );
 }
 
@@ -231,6 +243,7 @@ void HybridContext::buildScenes(
 	std::vector<hiprtDevicePtr>&			 buffers )
 {
 	m_gpu.buildScenes( buildInputs, buildOptions, temporaryBuffer, stream, buffers );
+	syncGpu( stream );
 	dispatchCpuSceneBuild( buildInputs, buffers, false );
 }
 
@@ -242,6 +255,7 @@ void HybridContext::updateScenes(
 	std::vector<hiprtDevicePtr>&			 buffers )
 {
 	m_gpu.updateScenes( buildInputs, buildOptions, temporaryBuffer, stream, buffers );
+	syncGpu( stream );
 	dispatchCpuSceneBuild( buildInputs, buffers, true );
 }
 
