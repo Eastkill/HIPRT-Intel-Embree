@@ -7,16 +7,7 @@ namespace hiprt
 struct CpuGeometryData;
 struct CpuSceneData;
 
-/**
- * Global CPU-data registry.
- *
- * GPU pointers (oroDeviceptr cast to hiprtGeometry/hiprtScene) are unique
- * process-wide, so a single flat map is sufficient. Pure-CPU handles are the
- * CpuGeometryData/CpuSceneData pointers themselves — they are also unique.
- * Both can therefore share the same table without ambiguity.
- *
- * All functions are thread-safe via an internal mutex.
- */
+// Maps GPU and CPU handles for hybrid traversal. Thread-safe.
 
 void registerCpuGeom( hiprtGeometry handle, CpuGeometryData* data );
 void unregisterCpuGeom( hiprtGeometry handle );

@@ -30,9 +30,7 @@
 #include <embree4/rtcore.h>
 #include <embree4/rtcore_ray.h>
 
-// ---------------------------------------------------------------------------
-// Internal helpers – not for external consumption
-// ---------------------------------------------------------------------------
+// Internal helpers
 namespace hiprt_cpu_detail
 {
 
@@ -91,19 +89,51 @@ inline void traceGeometryBatch(
 	}
 }
 
+inline RTCRay makeRTCRay( const hiprtRay& ray ) noexcept
+{
+	RTCRay r{};
+	r.org_x = ray.origin.x;
+	r.org_y = ray.origin.y;
+	r.org_z = ray.origin.z;
+	r.dir_x = ray.direction.x;
+	r.dir_y = ray.direction.y;
+	r.dir_z = ray.direction.z;
+	r.tnear = ray.minT;
+	r.tfar	= ray.maxT;
+	r.mask	= static_cast<unsigned>( -1 );
+	r.flags = 0;
+	return r;
+}
+
+// Any-hit: rtcOccluded1 result encoded in hit.hasHit().
+inline void traceGeometryAnyHitBatch(
+	RTCScene scene, const hiprtRay* rays, hiprtHit* hits, uint32_t count ) noexcept
+{
+	if ( scene == nullptr )
+	{
+		for ( uint32_t i = 0; i < count; ++i )
+			hits[i] = hiprtHit{};
+		return;
+	}
+
+	for ( uint32_t i = 0; i < count; ++i )
+	{
+		RTCRay r = makeRTCRay( rays[i] );
+		rtcOccluded1( scene, &r );
+
+		hiprtHit hit{};
+		if ( r.tfar < 0.0f ) // occluded
+		{
+			hit.primID	   = 0;
+			hit.instanceID = hiprtInvalidValue;
+		}
+		hits[i] = hit;
+	}
+}
+
 } // namespace hiprt_cpu_detail
 
-// ---------------------------------------------------------------------------
-// Public CPU traversal API
-// ---------------------------------------------------------------------------
-
-/** \brief Host-side batch traversal that finds the closest hit.
- *
- * In CPU-only mode the handle is a direct CpuGeometryData / CpuSceneData pointer.
- * In hybrid mode (hiprtDeviceAMD | hiprtDeviceCPU or hiprtDeviceNVIDIA | hiprtDeviceCPU)
- * geometry and scene handles are GPU handles; the CPU Embree mirror is resolved
- * through the context side table.
- */
+// Host-side CPU batch traversal (Embree).
 class hiprtGeomTraversalClosestCPU
 {
   public:
@@ -130,6 +160,37 @@ class hiprtGeomTraversalClosestCPU
 		(void)ctx;
 		auto* data = reinterpret_cast<hiprt::CpuSceneData*>( hiprtGetInternalCpuDataFromScene( scene ) );
 		hiprt_cpu_detail::traceGeometryBatch(
+			( data != nullptr ) ? data->rtcScene : nullptr, rays, hits, count );
+	}
+};
+
+// Any-hit batch traversal (shadow/occlusion rays).
+class hiprtGeomTraversalAnyHitCPU
+{
+  public:
+	static void traceBatch(
+		hiprtContext	 ctx,
+		hiprtGeometry	 geom,
+		const hiprtRay*	 rays,
+		hiprtHit*		 hits,
+		uint32_t		 count ) noexcept
+	{
+		(void)ctx;
+		auto* data = reinterpret_cast<hiprt::CpuGeometryData*>( hiprtGetInternalCpuDataFromGeometry( geom ) );
+		hiprt_cpu_detail::traceGeometryAnyHitBatch(
+			( data != nullptr ) ? data->rtcScene : nullptr, rays, hits, count );
+	}
+
+	static void traceBatch(
+		hiprtContext	 ctx,
+		hiprtScene		 scene,
+		const hiprtRay*	 rays,
+		hiprtHit*		 hits,
+		uint32_t		 count ) noexcept
+	{
+		(void)ctx;
+		auto* data = reinterpret_cast<hiprt::CpuSceneData*>( hiprtGetInternalCpuDataFromScene( scene ) );
+		hiprt_cpu_detail::traceGeometryAnyHitBatch(
 			( data != nullptr ) ? data->rtcScene : nullptr, rays, hits, count );
 	}
 };

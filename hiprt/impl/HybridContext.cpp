@@ -16,11 +16,32 @@ void syncGpu( oroStream stream )
 	if ( err != oroSuccess )
 		throw std::runtime_error( "HybridContext: GPU synchronization failed before CPU mirror build" );
 }
+
+[[noreturn]] void throwHybridNotImplemented( const char* what )
+{
+	std::cerr << "[HybridContext] not implemented: " << what << std::endl;
+	throw std::runtime_error( what );
+}
+
+#ifndef NDEBUG
+// Debug: warn if Embree input buffer is device-only memory.
+void warnIfDeviceOnly( const void* ptr, const char* what )
+{
+	if ( ptr == nullptr ) return;
+	oroPointerAttribute_t attr{};
+	if ( oroPointerGetAttributes( &attr, const_cast<void*>( ptr ) ) == oroSuccess && attr.type == oroMemoryTypeDevice )
+	{
+		std::cerr << "[HybridContext] WARNING: " << what
+				  << " points to device-only memory; Embree (CPU) cannot read it. "
+				  << "Use oroMallocManaged / host-visible memory for CPU/hybrid mode.\n";
+	}
+}
+#else
+inline void warnIfDeviceOnly( const void*, const char* ) {}
+#endif
 } // namespace
 
-// ---------------------------------------------------------------------------
-// Construction / destruction
-// ---------------------------------------------------------------------------
+// Construction
 
 HybridContext::HybridContext( const hiprtContextCreationInput& input )
 	: m_gpu( input ), m_cpu( input )
@@ -28,15 +49,48 @@ HybridContext::HybridContext( const hiprtContextCreationInput& input )
 	std::cerr << "[HybridContext] constructed - GPU BVH + Embree CPU mirror active.\n";
 }
 
-HybridContext::~HybridContext()
+HybridContext::~HybridContext() {}
+
+oroFunction HybridContext::getBatchKernel( HybridBatchKernel kind )
 {
-	// Both sub-contexts clean up their own resources.
-	// Maps are empty at this point (destroy calls already handled them).
+	const int idx = static_cast<int>( kind );
+
+	std::lock_guard<std::mutex> lock( m_batchKernelMutex );
+	if ( m_batchKernels[idx] != nullptr )
+		return m_batchKernels[idx];
+
+	struct KernelDef
+	{
+		const char* include;
+		const char* func;
+	};
+	static const KernelDef defs[static_cast<int>( HybridBatchKernel::Count )] = {
+		{ "#include <hiprt/kernels/HybridSceneTraceBatchKernel.h>\n", "HybridSceneTraceBatchKernel" },
+		{ "#include <hiprt/kernels/HybridGeomTraceBatchKernel.h>\n", "HybridGeomTraceBatchKernel" },
+		{ "#include <hiprt/kernels/HybridSceneAnyHitBatchKernel.h>\n", "HybridSceneAnyHitBatchKernel" },
+		{ "#include <hiprt/kernels/HybridGeomAnyHitBatchKernel.h>\n", "HybridGeomAnyHitBatchKernel" },
+	};
+
+	std::vector<const char*>	  funcNames = { defs[idx].func };
+	std::string					  src		= defs[idx].include;
+	std::vector<const char*>	  headers;
+	std::vector<const char*>	  includeNames;
+	std::vector<const char*>	  options;
+	std::vector<hiprtFuncNameSet> funcNameSets;
+	std::vector<oroFunction>	  functions;
+	oroModule					  module = nullptr;
+
+	m_gpu.buildKernels(
+		funcNames, src, defs[idx].func, headers, includeNames, options, 0, 0, funcNameSets, functions, module, true );
+
+	if ( functions.empty() || functions[0] == nullptr )
+		throw std::runtime_error( "HybridContext: failed to compile internal batch kernel" );
+
+	m_batchKernels[idx] = functions[0];
+	return m_batchKernels[idx];
 }
 
-// ---------------------------------------------------------------------------
 // Geometry
-// ---------------------------------------------------------------------------
 
 std::vector<hiprtGeometry> HybridContext::createGeometries(
 	const std::vector<hiprtGeometryBuildInput>& buildInputs, const hiprtBuildOptions buildOptions )
@@ -51,7 +105,7 @@ std::vector<hiprtGeometry> HybridContext::createGeometries(
 		registerCpuGeom( gpuHandles[i], cpuData );
 	}
 
-	return gpuHandles; // return GPU handles; CPU side is hidden in the maps.
+	return gpuHandles;
 }
 
 void HybridContext::destroyGeometries( const std::vector<hiprtGeometry>& gpuGeometries )
@@ -80,7 +134,7 @@ void HybridContext::dispatchCpuGeomBuild(
 	const std::vector<hiprtDevicePtr>&			gpuBuffers,
 	bool										isUpdate )
 {
-	// Translate GPU buffers -> CPU buffers for CpuContext
+	// Map GPU buffers to CPU buffers.
 	std::vector<hiprtDevicePtr> cpuBuffers;
 	cpuBuffers.reserve( gpuBuffers.size() );
 	for ( auto gp : gpuBuffers )
@@ -89,6 +143,20 @@ void HybridContext::dispatchCpuGeomBuild(
 		if ( it == m_gpuToCpuGeom.end() )
 			throw std::runtime_error( "HybridContext: GPU geometry buffer not found in map" );
 		cpuBuffers.push_back( reinterpret_cast<hiprtDevicePtr>( it->second ) );
+	}
+
+	// Debug: check host visibility of primitive data.
+	for ( const auto& in : buildInputs )
+	{
+		if ( in.type == hiprtPrimitiveTypeTriangleMesh )
+		{
+			warnIfDeviceOnly( in.primitive.triangleMesh.vertices, "geometry vertices" );
+			warnIfDeviceOnly( in.primitive.triangleMesh.triangleIndices, "geometry triangleIndices" );
+		}
+		else if ( in.type == hiprtPrimitiveTypeAABBList )
+		{
+			warnIfDeviceOnly( in.primitive.aabbList.aabbs, "geometry aabbs" );
+		}
 	}
 
 	if ( isUpdate )
@@ -128,15 +196,12 @@ size_t HybridContext::getGeometriesBuildTempBufferSize(
 }
 
 std::vector<hiprtGeometry> HybridContext::compactGeometries(
-	const std::vector<hiprtGeometry>& geometries, oroStream stream )
+	const std::vector<hiprtGeometry>& /*geometries*/, oroStream /*stream*/ )
 {
-	// GPU compaction only in this pass; CPU mirror is unaffected.
-	return m_gpu.compactGeometries( geometries, stream );
+	throwHybridNotImplemented( "compactGeometries is not supported in hybrid mode (CPU mirror rebuild required)" );
 }
 
-// ---------------------------------------------------------------------------
 // Scene
-// ---------------------------------------------------------------------------
 
 std::vector<hiprtScene> HybridContext::createScenes(
 	const std::vector<hiprtSceneBuildInput>& buildInputs, const hiprtBuildOptions buildOptions )
@@ -180,11 +245,9 @@ void HybridContext::dispatchCpuSceneBuild(
 	const std::vector<hiprtDevicePtr>&		 gpuBuffers,
 	bool									 isUpdate )
 {
-	// Build CPU-side buffers and remap instance handles (GPU->CPU).
-	// We deep-copy each hiprtSceneBuildInput and patch its instances array.
+	// Remap GPU instance handles to CPU handles.
 	std::vector<hiprtDevicePtr>				 cpuBuffers;
 	std::vector<hiprtSceneBuildInput>		 cpuInputs;
-	// Storage for the remapped instances arrays (keep alive during the call).
 	std::vector<std::vector<hiprtInstance>>  remappedInstances( buildInputs.size() );
 
 	cpuBuffers.reserve( gpuBuffers.size() );
@@ -192,14 +255,16 @@ void HybridContext::dispatchCpuSceneBuild(
 
 	for ( size_t i = 0; i < buildInputs.size(); ++i )
 	{
-		// Translate GPU buffer to CPU buffer.
 		auto it = m_gpuToCpuScene.find( reinterpret_cast<hiprtScene>( gpuBuffers[i] ) );
 		if ( it == m_gpuToCpuScene.end() )
 			throw std::runtime_error( "HybridContext: GPU scene buffer not found in map" );
 		cpuBuffers.push_back( reinterpret_cast<hiprtDevicePtr>( it->second ) );
 
-		// Copy the build input and remap instances.
 		hiprtSceneBuildInput cpuIn = buildInputs[i];
+
+		warnIfDeviceOnly( buildInputs[i].instances, "scene instances" );
+		warnIfDeviceOnly( buildInputs[i].instanceTransformHeaders, "scene instanceTransformHeaders" );
+		warnIfDeviceOnly( buildInputs[i].instanceFrames, "scene instanceFrames" );
 
 		if ( buildInputs[i].instanceCount > 0 && buildInputs[i].instances != nullptr )
 		{
@@ -266,14 +331,12 @@ size_t HybridContext::getScenesBuildTempBufferSize(
 }
 
 std::vector<hiprtScene> HybridContext::compactScenes(
-	const std::vector<hiprtScene>& scenes, oroStream stream )
+	const std::vector<hiprtScene>& /*scenes*/, oroStream /*stream*/ )
 {
-	return m_gpu.compactScenes( scenes, stream );
+	throwHybridNotImplemented( "compactScenes is not supported in hybrid mode (CPU mirror rebuild required)" );
 }
 
-// ---------------------------------------------------------------------------
-// GPU-authoritative delegators
-// ---------------------------------------------------------------------------
+// GPU delegators
 
 hiprtFuncTable HybridContext::createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes )
 {
@@ -302,9 +365,9 @@ void HybridContext::saveGeometry( hiprtGeometry inGeometry, const std::string& f
 	m_gpu.saveGeometry( inGeometry, filename );
 }
 
-hiprtGeometry HybridContext::loadGeometry( const std::string& filename )
+hiprtGeometry HybridContext::loadGeometry( const std::string& /*filename*/ )
 {
-	return m_gpu.loadGeometry( filename );
+	throwHybridNotImplemented( "loadGeometry is not supported in hybrid mode (CPU mirror rebuild required)" );
 }
 
 void HybridContext::saveScene( hiprtScene inScene, const std::string& filename )
@@ -312,9 +375,9 @@ void HybridContext::saveScene( hiprtScene inScene, const std::string& filename )
 	m_gpu.saveScene( inScene, filename );
 }
 
-hiprtScene HybridContext::loadScene( const std::string& filename )
+hiprtScene HybridContext::loadScene( const std::string& /*filename*/ )
 {
-	return m_gpu.loadScene( filename );
+	throwHybridNotImplemented( "loadScene is not supported in hybrid mode (CPU mirror rebuild required)" );
 }
 
 void HybridContext::exportGeometryAabb( hiprtGeometry inGeometry, float3& outAabbMin, float3& outAabbMax )
@@ -366,9 +429,7 @@ void HybridContext::setLogLevel( hiprtLogLevel level )
 	m_gpu.setLogLevel( level );
 }
 
-// ---------------------------------------------------------------------------
 // CPU data accessors
-// ---------------------------------------------------------------------------
 
 CpuGeometryData* HybridContext::getCpuGeom( hiprtGeometry geometry )
 {

@@ -29,15 +29,13 @@ bool readKernelSource( const std::filesystem::path& srcPath, std::string& source
 	return true;
 }
 
-hiprtApiFunction buildHybridSceneTraceBatchKernel( hiprtContext context )
+hiprtApiFunction buildHybridKernel( hiprtContext context, const char* relPath, const char* funcName )
 {
-	const auto		kernelPath = getRootDir() / "hiprt/kernels/HybridSceneTraceBatchKernel.h";
-	std::string		sourceCode;
+	const auto		  kernelPath = getRootDir() / relPath;
+	std::string		  sourceCode;
 	const std::string moduleName = kernelPath.string();
 	if ( !readKernelSource( kernelPath, sourceCode ) )
 		return nullptr;
-
-	const char* funcName = "HybridSceneTraceBatchKernel";
 
 	std::vector<std::string> optionStorage;
 	optionStorage.push_back( "-I" + getRootDir().string() );
@@ -61,6 +59,11 @@ hiprtApiFunction buildHybridSceneTraceBatchKernel( hiprtContext context )
 	return funcApi;
 }
 
+hiprtApiFunction buildHybridSceneTraceBatchKernel( hiprtContext context )
+{
+	return buildHybridKernel( context, "hiprt/kernels/HybridSceneTraceBatchKernel.h", "HybridSceneTraceBatchKernel" );
+}
+
 hiprtFrameSRT makeSrt( float tx, float ty, float tz )
 {
 	hiprtFrameSRT f{};
@@ -81,6 +84,10 @@ bool hitsEqual( const hiprtHit& a, const hiprtHit& b )
 		return false;
 	return std::fabs( a.t - b.t ) < 1e-4f;
 }
+
+// Any-hit / occlusion only reports presence of an intersection; primID/uv are
+// not provided by the CPU occlusion path, so compare hasHit() alone.
+bool anyHitEqual( const hiprtHit& a, const hiprtHit& b ) { return a.hasHit() == b.hasHit(); }
 
 void fillTestRays( hiprtRay* rays, uint32_t count )
 {
@@ -132,9 +139,60 @@ hiprtScene HybridTraceBatchTest::buildSingleInstanceScene( hiprtGeometry& geomOu
 
 TEST_F( HybridTraceBatchTest, SplitBatchMatchesCpuReference )
 {
+	// Uses the simple API: no kernel to compile or pass - the hybrid context
+	// compiles and caches the batch kernel internally.
 	constexpr uint32_t rayCount = 16;
 
-	hiprtGeometry geom = nullptr;
+	hiprtGeometry geom	= nullptr;
+	hiprtScene	  scene = buildSingleInstanceScene( geom );
+	ASSERT_TRUE( scene != nullptr );
+	ASSERT_TRUE( geom != nullptr );
+
+	hiprtRay* rays		 = nullptr;
+	hiprtHit* refHits	 = nullptr;
+	hiprtHit* hybridHits = nullptr;
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &rays ), rayCount * sizeof( hiprtRay ), oroMemAttachGlobal ),
+		oroSuccess );
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &refHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroSuccess );
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &hybridHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroSuccess );
+	m_managedAllocs.push_back( rays );
+	m_managedAllocs.push_back( refHits );
+	m_managedAllocs.push_back( hybridHits );
+
+	fillTestRays( rays, rayCount );
+	std::memset( refHits, 0, rayCount * sizeof( hiprtHit ) );
+	std::memset( hybridHits, 0, rayCount * sizeof( hiprtHit ) );
+
+	hiprtGeomTraversalClosestCPU::traceBatch( m_context, scene, rays, refHits, rayCount );
+
+	hiprtHybridTraceConfig cfg{};
+	cfg.gpuFraction = 0.5f;
+	cfg.minCpuBatch = 1u;
+
+	ASSERT_EQ(
+		hiprtTraceHybridClosest( m_context, scene, cfg, rays, hybridHits, rayCount, nullptr ), hiprtSuccess );
+
+	for ( uint32_t i = 0; i < rayCount; ++i )
+	{
+		EXPECT_TRUE( hitsEqual( hybridHits[i], refHits[i] ) )
+			<< "Ray " << i << " mismatch (even=hit, odd=miss).";
+	}
+
+	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );
+	ASSERT_EQ( hiprtDestroyGeometry( m_context, geom ), hiprtSuccess );
+}
+
+TEST_F( HybridTraceBatchTest, ExplicitGpuInputStillWorks )
+{
+	// Advanced path: caller compiles the kernel and passes it via gpuInput.
+	constexpr uint32_t rayCount = 16;
+
+	hiprtGeometry geom	= nullptr;
 	hiprtScene	  scene = buildSingleInstanceScene( geom );
 	ASSERT_TRUE( scene != nullptr );
 	ASSERT_TRUE( geom != nullptr );
@@ -142,19 +200,17 @@ TEST_F( HybridTraceBatchTest, SplitBatchMatchesCpuReference )
 	hiprtApiFunction traceKernel = buildHybridSceneTraceBatchKernel( m_context );
 	ASSERT_TRUE( traceKernel != nullptr ) << "Failed to compile HybridSceneTraceBatchKernel.";
 
-	hiprtRay* rays = nullptr;
-	hiprtHit* refHits = nullptr;
+	hiprtRay* rays		 = nullptr;
+	hiprtHit* refHits	 = nullptr;
 	hiprtHit* hybridHits = nullptr;
 	ASSERT_EQ(
 		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &rays ), rayCount * sizeof( hiprtRay ), oroMemAttachGlobal ),
 		oroSuccess );
 	ASSERT_EQ(
-		oroMallocManaged(
-			reinterpret_cast<oroDeviceptr*>( &refHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &refHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
 		oroSuccess );
 	ASSERT_EQ(
-		oroMallocManaged(
-			reinterpret_cast<oroDeviceptr*>( &hybridHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &hybridHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
 		oroSuccess );
 	m_managedAllocs.push_back( rays );
 	m_managedAllocs.push_back( refHits );
@@ -174,13 +230,106 @@ TEST_F( HybridTraceBatchTest, SplitBatchMatchesCpuReference )
 	gpuInput.traceKernel = traceKernel;
 
 	ASSERT_EQ(
-		hiprtTraceHybridClosest( m_context, scene, cfg, gpuInput, rays, hybridHits, rayCount, nullptr ),
-		hiprtSuccess );
+		hiprtTraceHybridClosest( m_context, scene, cfg, gpuInput, rays, hybridHits, rayCount, nullptr ), hiprtSuccess );
 
 	for ( uint32_t i = 0; i < rayCount; ++i )
 	{
 		EXPECT_TRUE( hitsEqual( hybridHits[i], refHits[i] ) )
 			<< "Ray " << i << " mismatch (even=hit, odd=miss).";
+	}
+
+	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );
+	ASSERT_EQ( hiprtDestroyGeometry( m_context, geom ), hiprtSuccess );
+}
+
+TEST_F( HybridTraceBatchTest, AnyHitSceneMatchesCpuReference )
+{
+	constexpr uint32_t rayCount = 16;
+
+	hiprtGeometry geom	= nullptr;
+	hiprtScene	  scene = buildSingleInstanceScene( geom );
+	ASSERT_TRUE( scene != nullptr );
+	ASSERT_TRUE( geom != nullptr );
+
+	hiprtRay* rays		 = nullptr;
+	hiprtHit* refHits	 = nullptr;
+	hiprtHit* hybridHits = nullptr;
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &rays ), rayCount * sizeof( hiprtRay ), oroMemAttachGlobal ),
+		oroSuccess );
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &refHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroSuccess );
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &hybridHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroSuccess );
+	m_managedAllocs.push_back( rays );
+	m_managedAllocs.push_back( refHits );
+	m_managedAllocs.push_back( hybridHits );
+
+	fillTestRays( rays, rayCount );
+	std::memset( refHits, 0, rayCount * sizeof( hiprtHit ) );
+	std::memset( hybridHits, 0, rayCount * sizeof( hiprtHit ) );
+
+	hiprtGeomTraversalAnyHitCPU::traceBatch( m_context, scene, rays, refHits, rayCount );
+
+	hiprtHybridTraceConfig cfg{};
+	cfg.gpuFraction = 0.5f;
+	cfg.minCpuBatch = 1u;
+
+	ASSERT_EQ(
+		hiprtTraceHybridAnyHit( m_context, scene, cfg, rays, hybridHits, rayCount, nullptr ), hiprtSuccess );
+
+	for ( uint32_t i = 0; i < rayCount; ++i )
+	{
+		EXPECT_TRUE( anyHitEqual( hybridHits[i], refHits[i] ) ) << "Ray " << i << " any-hit mismatch.";
+	}
+
+	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );
+	ASSERT_EQ( hiprtDestroyGeometry( m_context, geom ), hiprtSuccess );
+}
+
+TEST_F( HybridTraceBatchTest, GeometryClosestMatchesCpuReference )
+{
+	constexpr uint32_t rayCount = 16;
+
+	hiprtGeometry geom	= nullptr;
+	hiprtScene	  scene = buildSingleInstanceScene( geom );
+	ASSERT_TRUE( scene != nullptr );
+	ASSERT_TRUE( geom != nullptr );
+
+	hiprtRay* rays		 = nullptr;
+	hiprtHit* refHits	 = nullptr;
+	hiprtHit* hybridHits = nullptr;
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &rays ), rayCount * sizeof( hiprtRay ), oroMemAttachGlobal ),
+		oroSuccess );
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &refHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroSuccess );
+	ASSERT_EQ(
+		oroMallocManaged( reinterpret_cast<oroDeviceptr*>( &hybridHits ), rayCount * sizeof( hiprtHit ), oroMemAttachGlobal ),
+		oroSuccess );
+	m_managedAllocs.push_back( rays );
+	m_managedAllocs.push_back( refHits );
+	m_managedAllocs.push_back( hybridHits );
+
+	fillTestRays( rays, rayCount );
+	std::memset( refHits, 0, rayCount * sizeof( hiprtHit ) );
+	std::memset( hybridHits, 0, rayCount * sizeof( hiprtHit ) );
+
+	hiprtGeomTraversalClosestCPU::traceBatch( m_context, geom, rays, refHits, rayCount );
+
+	hiprtHybridTraceConfig cfg{};
+	cfg.gpuFraction = 0.5f;
+	cfg.minCpuBatch = 1u;
+
+	ASSERT_EQ(
+		hiprtTraceHybridClosest( m_context, geom, cfg, rays, hybridHits, rayCount, nullptr ), hiprtSuccess );
+
+	for ( uint32_t i = 0; i < rayCount; ++i )
+	{
+		EXPECT_TRUE( hitsEqual( hybridHits[i], refHits[i] ) ) << "Ray " << i << " geometry-closest mismatch.";
 	}
 
 	ASSERT_EQ( hiprtDestroyScene( m_context, scene ), hiprtSuccess );
@@ -202,7 +351,7 @@ TEST_F( HybridTraceBatchTest, RejectsNonHybridContext )
 	hiprtHybridTraceGpuInput gpuInput{ nullptr, {} };
 
 	EXPECT_EQ(
-		hiprtTraceHybridClosest( cpuContext, nullptr, cfg, gpuInput, &ray, &hit, 1, nullptr ),
+		hiprtTraceHybridClosest( cpuContext, static_cast<hiprtScene>( nullptr ), cfg, gpuInput, &ray, &hit, 1, nullptr ),
 		hiprtErrorInvalidParameter );
 
 	EXPECT_EQ( hiprtDestroyContext( cpuContext ), hiprtSuccess );

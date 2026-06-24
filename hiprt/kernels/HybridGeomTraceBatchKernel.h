@@ -30,14 +30,14 @@
 #include <hiprt/hiprt_device.h>
 #endif
 
-// Closest-hit scene batch kernel for hiprtTraceHybridClosest.
-extern "C" __global__ void HybridSceneTraceBatchKernel(
-	hiprtScene scene, uint32_t numRays, hiprtRay* rays, hiprtHit* hits )
+// Closest-hit geometry batch kernel for hiprtTraceHybridClosest.
+extern "C" __global__ void HybridGeomTraceBatchKernel(
+	hiprtGeometry geom, uint32_t numRays, hiprtRay* rays, hiprtHit* hits )
 {
 	const uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
 	if ( index >= numRays )
 		return;
 
-	hiprtSceneTraversalClosest tr( scene, rays[index] );
+	hiprtGeomTraversalClosest tr( geom, rays[index] );
 	hits[index] = tr.getNextHit();
 }

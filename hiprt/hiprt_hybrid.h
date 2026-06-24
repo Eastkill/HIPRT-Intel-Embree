@@ -26,45 +26,20 @@
 
 #include <hiprt/hiprt.h>
 
-/** \brief Scheduling parameters for hybrid closest-hit tracing.
- */
 struct hiprtHybridTraceConfig
 {
-	/*!< Fraction of rays dispatched to the GPU in [0, 1]. */
-	float gpuFraction = 0.8f;
-	/*!< Minimum number of rays kept for the CPU path when both backends are used. */
+	float	 gpuFraction = 0.8f;
 	uint32_t minCpuBatch = 1024u;
 };
 
-/** \brief GPU resources required for hybrid scene tracing.
- *
- * Compile hiprt/kernels/HybridSceneTraceBatchKernel.h with hiprtBuildTraceKernels
- * and pass the resulting function handle here. globalStack is unused by the
- * default batch kernel but reserved for advanced kernels such as TraceKernel.
- */
+// Optional: pass your own GPU kernel. Default overloads compile one internally.
 struct hiprtHybridTraceGpuInput
 {
 	hiprtApiFunction	   traceKernel	 = nullptr;
 	hiprtGlobalStackBuffer globalStack = {};
 };
 
-/** \brief Trace a batch of closest-hit scene rays on GPU and CPU concurrently.
- *
- * Requires a hybrid context (hiprtDeviceAMD | hiprtDeviceCPU or
- * hiprtDeviceNVIDIA | hiprtDeviceCPU). The first gpuCount rays are traced on
- * the GPU; the remainder on the CPU Embree mirror. rays and hits must be
- * host-visible (managed/UVA or pinned mapped) so both backends can access them.
- *
- * \param context Hybrid HIPRT context.
- * \param scene GPU scene handle with a CPU mirror.
- * \param config Split policy between GPU and CPU.
- * \param gpuInput Precompiled GPU trace kernel (and optional stack buffer).
- * \param rays Host-visible ray array of length rayCount.
- * \param hits Host-visible hit array of length rayCount.
- * \param rayCount Number of rays to trace.
- * \param stream GPU stream for the device launch (0 for default stream).
- * \return hiprtSuccess or an error code.
- */
+// Hybrid closest-hit (scene). Requires hybrid context; rays/hits must be host-visible.
 HIPRT_API hiprtError hiprtTraceHybridClosest(
 	hiprtContext					 context,
 	hiprtScene						 scene,
@@ -74,3 +49,71 @@ HIPRT_API hiprtError hiprtTraceHybridClosest(
 	hiprtHit*						 hits,
 	uint32_t						 rayCount,
 	hiprtApiStream					 stream );
+
+HIPRT_API hiprtError hiprtTraceHybridClosest(
+	hiprtContext					 context,
+	hiprtGeometry					 geometry,
+	const hiprtHybridTraceConfig&	 config,
+	const hiprtHybridTraceGpuInput&	 gpuInput,
+	hiprtRay*						 rays,
+	hiprtHit*						 hits,
+	uint32_t						 rayCount,
+	hiprtApiStream					 stream );
+
+// Hybrid any-hit (scene/geometry). Only hit.hasHit() is meaningful on CPU path.
+HIPRT_API hiprtError hiprtTraceHybridAnyHit(
+	hiprtContext					 context,
+	hiprtScene						 scene,
+	const hiprtHybridTraceConfig&	 config,
+	const hiprtHybridTraceGpuInput&	 gpuInput,
+	hiprtRay*						 rays,
+	hiprtHit*						 hits,
+	uint32_t						 rayCount,
+	hiprtApiStream					 stream );
+
+HIPRT_API hiprtError hiprtTraceHybridAnyHit(
+	hiprtContext					 context,
+	hiprtGeometry					 geometry,
+	const hiprtHybridTraceConfig&	 config,
+	const hiprtHybridTraceGpuInput&	 gpuInput,
+	hiprtRay*						 rays,
+	hiprtHit*						 hits,
+	uint32_t						 rayCount,
+	hiprtApiStream					 stream );
+
+// Simple API: kernel compiled and cached inside the hybrid context.
+HIPRT_API hiprtError hiprtTraceHybridClosest(
+	hiprtContext				  context,
+	hiprtScene					  scene,
+	const hiprtHybridTraceConfig& config,
+	hiprtRay*					  rays,
+	hiprtHit*					  hits,
+	uint32_t					  rayCount,
+	hiprtApiStream				  stream );
+
+HIPRT_API hiprtError hiprtTraceHybridClosest(
+	hiprtContext				  context,
+	hiprtGeometry				  geometry,
+	const hiprtHybridTraceConfig& config,
+	hiprtRay*					  rays,
+	hiprtHit*					  hits,
+	uint32_t					  rayCount,
+	hiprtApiStream				  stream );
+
+HIPRT_API hiprtError hiprtTraceHybridAnyHit(
+	hiprtContext				  context,
+	hiprtScene					  scene,
+	const hiprtHybridTraceConfig& config,
+	hiprtRay*					  rays,
+	hiprtHit*					  hits,
+	uint32_t					  rayCount,
+	hiprtApiStream				  stream );
+
+HIPRT_API hiprtError hiprtTraceHybridAnyHit(
+	hiprtContext				  context,
+	hiprtGeometry				  geometry,
+	const hiprtHybridTraceConfig& config,
+	hiprtRay*					  rays,
+	hiprtHit*					  hits,
+	uint32_t					  rayCount,
+	hiprtApiStream				  stream );

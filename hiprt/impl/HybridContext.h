@@ -5,30 +5,31 @@
 #include <hiprt/impl/CpuTypes.h>
 #include <hiprt/impl/GpuContext.h>
 
+#include <mutex>
 #include <unordered_map>
 
 namespace hiprt
 {
 
-/**
- * HybridContext — composes GpuContext + CpuContext.
- *
- * Every build operation is performed twice:
- *   1. On the GPU (via GpuContext) — the GPU handle is returned to the caller.
- *   2. On the CPU (via CpuContext / Embree) — the CpuGeometryData / CpuSceneData ptr
- *      is stored in the instance maps and registered in the global CpuDataRegistry
- *      so that hiprt_cpu.h traversal classes can resolve it by the GPU handle.
- *
- * This preserves 100 % binary compatibility with existing GPU-only code: the
- * opaque handles visible to the application remain GPU device pointers.
- */
+// GPU + CPU (Embree) context. Build ops update both sides; callers keep GPU handles.
 class HybridContext : public ContextBase
 {
   public:
+	enum class HybridBatchKernel : int
+	{
+		SceneClosest = 0,
+		GeomClosest,
+		SceneAnyHit,
+		GeomAnyHit,
+		Count
+	};
+
 	explicit HybridContext( const hiprtContextCreationInput& input );
 	~HybridContext() override;
 
-	// ----- Geometry --------------------------------------------------------
+	oroFunction getBatchKernel( HybridBatchKernel kind );
+
+	// Geometry
 	std::vector<hiprtGeometry>
 	createGeometries( const std::vector<hiprtGeometryBuildInput>& buildInputs, const hiprtBuildOptions buildOptions ) override;
 
@@ -53,7 +54,7 @@ class HybridContext : public ContextBase
 
 	std::vector<hiprtGeometry> compactGeometries( const std::vector<hiprtGeometry>& geometries, oroStream stream ) override;
 
-	// ----- Scene -----------------------------------------------------------
+	// Scene
 	std::vector<hiprtScene>
 	createScenes( const std::vector<hiprtSceneBuildInput>& buildInputs, const hiprtBuildOptions buildOptions ) override;
 
@@ -78,7 +79,7 @@ class HybridContext : public ContextBase
 
 	std::vector<hiprtScene> compactScenes( const std::vector<hiprtScene>& scenes, oroStream stream ) override;
 
-	// ----- GPU-authoritative operations (delegate to GpuContext) -----------
+	// GPU ops (delegate to GpuContext)
 	hiprtFuncTable createFuncTable( uint32_t numGeomTypes, uint32_t numRayTypes ) override;
 	void		   setFuncTable( hiprtFuncTable funcTable, uint32_t geomType, uint32_t rayType, hiprtFuncDataSet set ) override;
 	void		   destroyFuncTable( hiprtFuncTable funcTable ) override;
@@ -121,18 +122,16 @@ class HybridContext : public ContextBase
 	void setCacheDir( const std::filesystem::path& path ) override;
 	void setLogLevel( hiprtLogLevel level ) override;
 
-	// ----- CPU-data accessors (used by hiprt_cpu.h via registry) -----------
+	// CPU data accessors
 	CpuGeometryData* getCpuGeom( hiprtGeometry geometry ) override;
 	CpuSceneData*	 getCpuScene( hiprtScene scene ) override;
 
   private:
-	// Translate GPU geometry buffers to their CPU counterparts and call fn.
 	void dispatchCpuGeomBuild(
 		const std::vector<hiprtGeometryBuildInput>& buildInputs,
 		const std::vector<hiprtDevicePtr>&			gpuBuffers,
 		bool										isUpdate );
 
-	// Translate GPU scene buffers (remapping instance handles) and call fn.
 	void dispatchCpuSceneBuild(
 		const std::vector<hiprtSceneBuildInput>& buildInputs,
 		const std::vector<hiprtDevicePtr>&		 gpuBuffers,
@@ -141,8 +140,11 @@ class HybridContext : public ContextBase
 	GpuContext m_gpu;
 	CpuContext m_cpu;
 
-	std::unordered_map<hiprtGeometry, hiprtGeometry> m_gpuToCpuGeom;  // GPU handle -> CPU handle
-	std::unordered_map<hiprtScene,    hiprtScene>    m_gpuToCpuScene; // GPU handle -> CPU handle
+	std::unordered_map<hiprtGeometry, hiprtGeometry> m_gpuToCpuGeom;
+	std::unordered_map<hiprtScene,    hiprtScene>    m_gpuToCpuScene;
+
+	std::mutex	m_batchKernelMutex;
+	oroFunction m_batchKernels[static_cast<int>( HybridBatchKernel::Count )] = {};
 };
 
 } // namespace hiprt
